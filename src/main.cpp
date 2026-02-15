@@ -182,10 +182,10 @@ void loop() {
 
   bool current = digitalRead(BUTTON_PIN);
 
-  // only do button logic if tasks exist
+  
   if (totaltasks > 0) {
 
-    // detect press (HIGH → LOW)
+  
     if (lastState == HIGH && current == LOW) {
       pressCount++;
       if (completed < (int)tasksList.size()) {
@@ -202,28 +202,27 @@ void loop() {
       if (green > 255) green = 255;
       pixel.setPixelColor(0, pixel.Color(green, red, 0));
       pixel.show();
-      
-      // finished all tasks
+     
       if (pressCount >= totaltasks) {
         delay(500);
 
         pixel.setPixelColor(0, pixel.Color(0,0,0));
         pixel.show();
-        for (int i = 0; i < 13; i++) {   // ~5 seconds total
+        for (int i = 0; i < 13; i++) {   
 
-          // ON (green)
+        
           pixel.setPixelColor(0, pixel.Color(225, 0, 0));
           pixel.show();
           delay(200);
 
-          // OFF
+
           pixel.setPixelColor(0, pixel.Color(0, 0, 225));
           pixel.show();
           delay(200);
         }
         pixel.setPixelColor(0, pixel.Color(0, 0, 0));
         pixel.show();
-        // reset
+        
         totaltasks = 0;
         pressCount = 0;
         red = 0;
@@ -233,7 +232,7 @@ void loop() {
 
       }
 
-      delay(250); // debounce
+      delay(250); 
     }
   }
 
