@@ -24,7 +24,7 @@ const char* password = "dvtqwb8b8d2d6nm";
 
 WebServer server(80);
 
-// ---------- WEBPAGE ----------
+
 String makePage() {
   String html = R"rawliteral(
 <!DOCTYPE html>
@@ -103,7 +103,6 @@ void handleReset() {
   red = 255;
   green = 0;
 
-  // turn LED off
   pixel.setPixelColor(0, pixel.Color(0,0,0));
   pixel.show();
 
@@ -111,13 +110,12 @@ void handleReset() {
   server.send(303);
 }
 void handleSetTasks() {
-  // WebServer supports reading body args if sent as form POST
   String raw = server.arg("tasks");
 
   tasksList.clear();
   completed = 0;
 
-  // split lines
+  
   raw.replace("\r", "");
   int start = 0;
   while (true) {
@@ -128,11 +126,11 @@ void handleSetTasks() {
     if (nl == -1) break;
     start = nl + 1;
   }
-  totaltasks = (int)tasksList.size();          // ✅ IMPORTANT
-  pixel.setPixelColor(0, pixel.Color(0, 255, 0)); // ✅ show red when tasks saved
+  totaltasks = (int)tasksList.size();          
+  pixel.setPixelColor(0, pixel.Color(0, 255, 0)); 
   pixel.show();
   server.sendHeader("Location", "/");
-  server.send(303); // redirect back to page
+  server.send(303); 
 }
 void handleStatus() {
   int total = (int)tasksList.size();
@@ -153,7 +151,7 @@ void handleStatus() {
 
   server.send(200, "application/json", json);
 }
-// ---------- SETUP ----------
+
 void setup() {
   Serial.begin(115200);
 
@@ -178,7 +176,7 @@ void setup() {
   server.begin();
 }
 
-// ---------- LOOP ----------
+
 void loop() {
   server.handleClient();
 
