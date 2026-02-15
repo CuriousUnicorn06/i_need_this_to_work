@@ -1,175 +1,243 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
-#include "comms.h"
-#include "state.h"    
-#include "api.h"      
+#include <Adafruit_NeoPixel.h>
+#include <vector>
 
-const char* ssid     = "alaynas iPhone";
-const char* password = "abcdefghij";
+using namespace std;
+#define BUTTON_PIN 21
+#define PIXEL_PIN 18
+vector<String> tasksList;
+volatile int completed = 0;
+Adafruit_NeoPixel pixel(1, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+int totaltasks = 0;
+int pressCount = 0;
+int change = 0;
+int red = 255;
+int green = 0;
+
+bool lastState = HIGH;
+
+const char* ssid     = "Avery's S22";
+const char* password = "dvtqwb8b8d2d6nm";
 
 WebServer server(80);
 
-// ---- WEBPAGE ----
-const char htmlPage[] PROGMEM = R"rawliteral(
+// ---------- WEBPAGE ----------
+String makePage() {
+  String html = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>To-Do Competition</title>
+  <title>Tasks</title>
   <style>
-    body{
-      margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: #ffc3d5;
-      color:#111;
-      display:flex;
-      min-height:100vh;
-      align-items:center;
-      justify-content:center;
-      padding:20px;
-    }
-    .card{
-      width: min(520px, 100%);
-      background:#ffe4ec;
-      border-radius:16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-      padding:22px;
-    }
-    h1{
-      margin:0 0 6px 0;
-      font-size:22px;
-    }
-    .sub{
-      margin:0 0 18px 0;
-      color:#555;
-      font-size:14px;
-    }
-    .row{
-      display:flex;
-      gap:10px;
-      margin: 10px 0 16px 0;
-    }
-    .pill{
-      flex:1;
-      border:1px solid #ddd;
-      border-radius:12px;
-      padding:12px 10px;
-      display:flex;
-      gap:10px;
-      align-items:center;
-      cursor:pointer;
-      user-select:none;
-    }
-    .pill input{ accent-color:#111; }
-    label span{ font-weight:600; }
-    textarea{
-      width:100%;
-      box-sizing:border-box;
-      border:1px solid #ddd;
-      border-radius:12px;
-      padding:12px;
-      font-size:14px;
-      line-height:1.4;
-      resize:vertical;
-      min-height:140px;
-      outline:none;
-    }
-    textarea:focus{
-      border-color:#111;
-      box-shadow:0 0 0 3px rgba(0,0,0,0.08);
-    }
-    .btn{
-      width:100%;
-      border:none;
-      border-radius:12px;
-      padding:12px 14px;
-      font-size:15px;
-      font-weight:700;
-      cursor:pointer;
-      background:ffe4ec;
-      color:#fff;
-      margin-top:14px;
-    }
-    .btn:active{ transform: translateY(1px); }
-    .hint{
-      margin-top:10px;
-      font-size:12px;
-      color:#666;
-    }
+    body{font-family:system-ui;margin:20px;}
+    textarea{width:100%;max-width:520px;height:140px;}
+    .wrap{max-width:520px;}
+    li{margin:8px 0;}
   </style>
 </head>
-
 <body>
-  <div class="card">
-    <h1>To-Do Competition</h1>
-    <p class="sub">Pick a user, paste your list, hit save.</p>
+<div class="wrap">
+  <h2>Enter tasks (one per line)</h2>
+  <form action="/setTasks" method="POST">
+    <textarea name="tasks" placeholder="- Homework&#10;- Gym&#10;- Laundry"></textarea><br><br>
+    <button type="submit">Save Tasks</button>
+  </form>
 
-    <form action="/submit" method="GET">
-      <div class="row">
-        <label class="pill">
-          <input type="radio" name="user" value="User1" required>
-          <span>User 1</span>
-        </label>
+  <br><br>
+  <form action="/reset" method="POST">
+    <button type="submit">Reset</button>
+  </form>
 
-        <label class="pill">
-          <input type="radio" name="user" value="User2">
-          <span>User 2</span>
-        </label>
-      </div>
+  <h3>To-do</h3>
+  <ul id="list"></ul>
 
-      <textarea name="todo" placeholder="- example&#10"></textarea>
+  <p><b>Completed:</b> <span id="done">0</span>/<span id="total">0</span></p>
+</div>
 
-      <button class="btn" type="submit">Save List</button>
-      <div class="hint">Tip: each line becomes one task later.</div>
-    </form>
-  </div>
+<script>
+async function refresh(){
+  const res = await fetch('/status');
+  const data = await res.json();
+
+  document.getElementById('done').textContent = data.completed;
+  document.getElementById('total').textContent = data.total;
+
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+
+  for (let i=0; i<data.tasks.length; i++){
+    const li = document.createElement('li');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = (i < data.completed);
+    cb.disabled = true;
+    li.appendChild(cb);
+    li.appendChild(document.createTextNode(' ' + data.tasks[i]));
+    list.appendChild(li);
+  }
+}
+
+refresh();
+setInterval(refresh, 300); // update 3x/second
+</script>
 </body>
 </html>
 )rawliteral";
+  return html;
+}
+
 
 void handleRoot() {
-  server.send(200, "text/html", htmlPage);
+  server.send(200, "text/html", makePage());
 }
+void handleReset() {
+  tasksList.clear();
+  completed = 0;
+  totaltasks = 0;
+  pressCount = 0;
 
-void handleSubmit() {
-  String user = server.arg("user");
-  String todo = server.arg("todo");
+  red = 255;
+  green = 0;
 
-  Serial.println("----- NEW LIST -----");
-  Serial.println("User: " + user);
-  Serial.println("To-do:\n" + todo);
+  // turn LED off
+  pixel.setPixelColor(0, pixel.Color(0,0,0));
+  pixel.show();
 
-  String response = "<h2>Saved for " + user + "!</h2>";
-  response += "<pre>" + todo + "</pre>";
-  response += "<a href='/'>Go back</a>";
-
-  server.send(200, "text/html", response);
+  server.sendHeader("Location", "/");
+  server.send(303);
 }
+void handleSetTasks() {
+  // WebServer supports reading body args if sent as form POST
+  String raw = server.arg("tasks");
 
+  tasksList.clear();
+  completed = 0;
+
+  // split lines
+  raw.replace("\r", "");
+  int start = 0;
+  while (true) {
+    int nl = raw.indexOf('\n', start);
+    String line = (nl == -1) ? raw.substring(start) : raw.substring(start, nl);
+    line.trim();
+    if (line.length() > 0) tasksList.push_back(line);
+    if (nl == -1) break;
+    start = nl + 1;
+  }
+  totaltasks = (int)tasksList.size();          // ✅ IMPORTANT
+  pixel.setPixelColor(0, pixel.Color(0, 255, 0)); // ✅ show red when tasks saved
+  pixel.show();
+  server.sendHeader("Location", "/");
+  server.send(303); // redirect back to page
+}
+void handleStatus() {
+  int total = (int)tasksList.size();
+  int done = completed;
+  if (done > total) done = total;
+
+  String json = "{";
+  json += "\"total\":" + String(total) + ",";
+  json += "\"completed\":" + String(done) + ",";
+  json += "\"tasks\":[";
+  for (int i=0; i<total; i++) {
+    String t = tasksList[i];
+    t.replace("\\", "\\\\"); t.replace("\"", "\\\"");
+    json += "\"" + t + "\"";
+    if (i != total-1) json += ",";
+  }
+  json += "]}";
+
+  server.send(200, "application/json", json);
+}
+// ---------- SETUP ----------
 void setup() {
-   Serial.begin(115200);
+  Serial.begin(115200);
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  pixel.begin();
+  pixel.setBrightness(50);
+  pixel.setPixelColor(0, pixel.Color(0,0,0));
+  pixel.show();
 
   WiFi.begin(ssid, password);
-
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
   }
 
-  Serial.println("\nConnected");
   Serial.println(WiFi.localIP());
+
   server.on("/", handleRoot);
-  server.on("/submit", handleSubmit);
+  server.on("/setTasks", HTTP_POST, handleSetTasks);
+  server.on("/reset", HTTP_POST, handleReset);
+  server.on("/status", handleStatus);
   server.begin();
-  
-  setupUDP();
-  Serial.println("Sending test packet...");
-  sendUDPMessage("B_DONE");
 }
 
+// ---------- LOOP ----------
 void loop() {
   server.handleClient();
-  
-  delay(2); // ✅ tiny yield to keep system happy
+
+  bool current = digitalRead(BUTTON_PIN);
+
+  // only do button logic if tasks exist
+  if (totaltasks > 0) {
+
+    // detect press (HIGH → LOW)
+    if (lastState == HIGH && current == LOW) {
+      pressCount++;
+      if (completed < (int)tasksList.size()) {
+        completed++;
+      }
+      delay(250);
+    
+
+      
+      change = 255/totaltasks;
+      red -= change;
+      green += change;
+      if (red < 0) red = 0;
+      if (green > 255) green = 255;
+      pixel.setPixelColor(0, pixel.Color(green, red, 0));
+      pixel.show();
+      
+      // finished all tasks
+      if (pressCount >= totaltasks) {
+        delay(500);
+
+        pixel.setPixelColor(0, pixel.Color(0,0,0));
+        pixel.show();
+        for (int i = 0; i < 13; i++) {   // ~5 seconds total
+
+          // ON (green)
+          pixel.setPixelColor(0, pixel.Color(225, 0, 0));
+          pixel.show();
+          delay(200);
+
+          // OFF
+          pixel.setPixelColor(0, pixel.Color(0, 0, 225));
+          pixel.show();
+          delay(200);
+        }
+        pixel.setPixelColor(0, pixel.Color(0, 0, 0));
+        pixel.show();
+        // reset
+        totaltasks = 0;
+        pressCount = 0;
+        red = 0;
+        green = 0;
+        pixel.setPixelColor(0, pixel.Color(green, red, 0));
+        pixel.show();
+
+      }
+
+      delay(250); // debounce
+    }
+  }
+
+  lastState = current;
 }
